@@ -20,7 +20,7 @@ export default async function handler(req, res) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": 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,
+        "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify(body),
@@ -32,7 +32,10 @@ export default async function handler(req, res) {
     try {
       data = JSON.parse(text);
     } catch {
-      return res.status(502).json({ error: "Anthropic returned an unexpected response.", raw: text.slice(0, 200) });
+      return res.status(502).json({
+        error: "Anthropic returned an unexpected response.",
+        raw: text.slice(0, 200),
+      });
     }
 
     return res.status(response.status).json(data);
