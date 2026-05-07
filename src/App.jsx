@@ -21,17 +21,17 @@ const TC = {
   hallucin:"#E41E3F",chain:"#00C853",prefill:"#7C4DFF",xmltags:"#FF6D00",
 };
 const TECHNIQUES = [
-  {id:"cot",       name:"Chain-of-Thought",         short:"CoT",desc:"Step-by-step reasoning before final answer"},
-  {id:"few",       name:"Few-Shot",                  short:"FS", desc:"2–3 concrete examples injected inline"},
-  {id:"role",      name:"Role + Context",            short:"R+C",desc:"Expert identity with domain background"},
-  {id:"decomp",    name:"Structured Decomp",         short:"SD", desc:"Complex task broken into ordered phases"},
-  {id:"constraint",name:"Constraint-First",          short:"CF", desc:"Rules and hard limits declared upfront"},
-  {id:"react",     name:"ReAct",                     short:"RA", desc:"Reason → Act — ideal for research tasks"},
-  {id:"meta",      name:"Meta-Prompting",            short:"MP", desc:"AI plans approach before executing"},
-  {id:"hallucin",  name:"Hallucination Guard",       short:"HG", desc:"Cite sources, admit uncertainty explicitly"},
-  {id:"chain",     name:"Prompt Chaining",           short:"PC", desc:"Output of step N feeds cleanly into N+1"},
-  {id:"prefill",   name:"Prefill",                   short:"PF", desc:"Pre-load assistant turn to steer format"},
-  {id:"xmltags",   name:"XML Tag Separation",        short:"XML",desc:"Separate instructions from data with tags"},
+  {id:"cot",       name:"Chain-of-Thought",  short:"CoT",desc:"Step-by-step reasoning before final answer"},
+  {id:"few",       name:"Few-Shot",           short:"FS", desc:"2–3 concrete examples injected inline"},
+  {id:"role",      name:"Role + Context",     short:"R+C",desc:"Expert identity with domain background"},
+  {id:"decomp",    name:"Structured Decomp",  short:"SD", desc:"Complex task broken into ordered phases"},
+  {id:"constraint",name:"Constraint-First",   short:"CF", desc:"Rules and hard limits declared upfront"},
+  {id:"react",     name:"ReAct",              short:"RA", desc:"Reason → Act — ideal for research tasks"},
+  {id:"meta",      name:"Meta-Prompting",     short:"MP", desc:"AI plans approach before executing"},
+  {id:"hallucin",  name:"Hallucination Guard",short:"HG", desc:"Cite sources, admit uncertainty explicitly"},
+  {id:"chain",     name:"Prompt Chaining",    short:"PC", desc:"Output of step N feeds cleanly into N+1"},
+  {id:"prefill",   name:"Prefill",            short:"PF", desc:"Pre-load assistant turn to steer format"},
+  {id:"xmltags",   name:"XML Tag Separation", short:"XML",desc:"Separate instructions from data with tags"},
 ];
 const TECH_INSTRUCTIONS = {
   cot:"Think step-by-step through the problem before giving your final answer. Show reasoning chain explicitly.",
@@ -49,9 +49,9 @@ const TECH_INSTRUCTIONS = {
 const CONSTRAINTS=["No fluff","Verified only","Cite sources","Max 300 words","JSON output","Bullet list","Executive summary","Step-by-step"];
 const REFINES=["Shorter","Add constraints","More persuasive","Add example","More formal"];
 const PROVIDERS={
-  claude:{label:"Claude",sub:"Sonnet 4",color:"#25D366",grad:"linear-gradient(135deg,#25D366,#1FAD52)"},
-  gpt4:  {label:"GPT-4o",sub:"OpenAI",  color:"#10a37f",grad:"linear-gradient(135deg,#10a37f,#0d8a6b)"},
-  gemini:{label:"Gemini",sub:"2.5 Flash",color:"#1877F2",grad:"linear-gradient(135deg,#1877F2,#0d5cb8)"},
+  claude:{label:"Claude", sub:"Sonnet 4",   color:"#25D366",grad:"linear-gradient(135deg,#25D366,#1FAD52)"},
+  gpt4:  {label:"GPT-4o", sub:"OpenAI",    color:"#10a37f",grad:"linear-gradient(135deg,#10a37f,#0d8a6b)"},
+  gemini:{label:"Gemini", sub:"2.5 Flash", color:"#1877F2",grad:"linear-gradient(135deg,#1877F2,#0d5cb8)"},
 };
 const DOMAINS=[
   {keywords:["marketing","brand","campaign","ads","advertising","copy","sales","conversion","funnel","growth"],experts:["David Ogilvy","Seth Godin","Eugene Schwartz"],domain:"Marketing",color:"#FB724B"},
@@ -67,7 +67,9 @@ const DOMAINS=[
   {keywords:["ecommerce","shopify","store","product listing","conversion rate","checkout","dropship"],experts:["Drew Sanocki","Andrew Youderian","Ezra Firestone"],domain:"E-Commerce",color:"#25D366"},
   {keywords:["seo","social media","email","influencer","content marketing","digital","engagement"],experts:["Neil Patel","Rand Fishkin","Gary Vaynerchuk"],domain:"Digital Mktg",color:"#1877F2"},
 ];
+
 function detectDomains(t){const l=t.toLowerCase();return DOMAINS.filter(d=>d.keywords.some(k=>l.includes(k)));}
+
 function buildSystem(techIds,constraints,inputText){
   const techs=TECHNIQUES.filter(t=>techIds.includes(t.id));
   const domains=detectDomains(inputText);
@@ -91,7 +93,6 @@ function buildSystem(techIds,constraints,inputText){
 const css=`
   *, *::before, *::after { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
-
   @keyframes gradShift {
     0%,100% { background-position:0% 50%; }
     50%      { background-position:100% 50%; }
@@ -106,10 +107,7 @@ const css=`
   }
   @keyframes spin { to { transform:rotate(360deg); } }
   @keyframes blink { 0%,100%{opacity:1;}50%{opacity:0;} }
-
   .fade-up { animation: fadeUp 0.38s cubic-bezier(0.22,1,0.36,1) both; }
-
-  /* Zumbrunnen spring interactions — desktop only */
   @media(hover:hover){
     .tech-card  { transition:transform .2s cubic-bezier(.34,1.56,.64,1),box-shadow .2s,border-color .2s,background .18s; }
     .tech-card:hover  { transform:translateY(-3px) scale(1.02); }
@@ -126,18 +124,13 @@ const css=`
     .runcta:not(:disabled):hover  { transform:scale(1.015) translateY(-1px); }
     .runcta:not(:disabled):active { transform:scale(0.98); }
   }
-  /* Touch — just background transitions, no transforms */
   @media(hover:none){
     .tech-card,.cpill,.pcard,.rbtn,.hrow,.runcta {
       transition: background .15s, border-color .15s, box-shadow .15s;
     }
   }
-
-  /* Scrollbar thin */
   ::-webkit-scrollbar { width:4px; height:4px; }
   ::-webkit-scrollbar-thumb { background:rgba(0,0,0,0.15); border-radius:4px; }
-
-  /* Mobile bottom nav safe area */
   .bottom-nav { padding-bottom: env(safe-area-inset-bottom, 0px); }
 `;
 
@@ -162,7 +155,6 @@ function GradBg({dark}){
   );
 }
 
-/* ── useBreakpoint hook (Calzada mobile-first) ── */
 function useBreakpoint(){
   const [bp,setBp]=useState(()=>window.innerWidth);
   useEffect(()=>{
@@ -173,7 +165,6 @@ function useBreakpoint(){
   return{isMobile:bp<640,isTablet:bp>=640&&bp<1024,isDesktop:bp>=1024,w:bp};
 }
 
-/* ── Label ── */
 function Lbl({children,dark,noMb}){
   return(
     <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.09em",textTransform:"uppercase",
@@ -195,8 +186,6 @@ export default function App(){
   const [loading,setLoading]=useState(false);
   const [history,setHistory]=useState([]);
   const [outMeta,setOutMeta]=useState({provider:"",techs:[],domains:[]});
-  const [apiKey,setApiKey]=useState("");
-  const [showApiInput,setShowApiInput]=useState(false);
   const [copied,setCopied]=useState(false);
   const lastInput=useRef("");
   const {isMobile,isTablet,isDesktop,w}=useBreakpoint();
@@ -226,50 +215,58 @@ export default function App(){
     lastInput.current=raw;
     const pfx=provider!=="claude"?`[${p.label} proxy — via Claude Sonnet 4]\n\n`:"";
     try{
-      const key = apiKey.trim() || "sk-ant-"; // placeholder hint
-      if(!key || key==="sk-ant-") {
-        setOutput("Error: Please enter your Claude API key in the settings (top-right).");
+      const res=await fetch("/api/chat",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          model:"claude-sonnet-4-20250514",
+          max_tokens:1000,
+          system:buildSystem(techIds,constraints,raw),
+          messages:[{role:"user",content:raw}],
+        }),
+      });
+      const data=await res.json();
+      if(data.error){
+        setOutput("Error: "+( typeof data.error==="string" ? data.error : JSON.stringify(data.error)));
         setLoading(false);
         return;
       }
-      const res=await fetch("https://api.anthropic.com/v1/messages",{
-        method:"POST",
-        headers:{"Content-Type":"application/json","x-api-key":key},
-        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,
-          system:buildSystem(techIds,constraints,raw),messages:[{role:"user",content:raw}]}),
-      });
-      const data=await res.json();
       const text=data.content?.map(b=>b.text||"").join("")||"No response.";
       const full=pfx+text;
       setOutput(full);
-      setHistory(prev=>[{id:Date.now(),input:raw.slice(0,55)+(raw.length>55?"…":""),
-        provider:p.label,techs:aT.map(t=>t.short).join(", ")||"None",
-        domains:aD.map(d=>d.domain).join(", ")||"—",output:full,
-        ts:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),color:p.color,
+      setHistory(prev=>[{
+        id:Date.now(),
+        input:raw.slice(0,55)+(raw.length>55?"…":""),
+        provider:p.label,
+        techs:aT.map(t=>t.short).join(", ")||"None",
+        domains:aD.map(d=>d.domain).join(", ")||"—",
+        output:full,
+        ts:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),
+        color:p.color,
       },...prev].slice(0,20));
     }catch(e){setOutput("Error: "+e.message);}
     setLoading(false);
   };
 
   const refine=type=>{
-    const map={"Shorter":"Rewrite in half the words. Same facts, tighter.",
+    const map={
+      "Shorter":"Rewrite in half the words. Same facts, tighter.",
       "Add constraints":"Add strict compliance rules and edge-case handling.",
       "More persuasive":"Rewrite using compelling, action-driving language.",
       "Add example":"Add a concrete real-world example to illustrate the key point.",
-      "More formal":"Rewrite in formal executive/legal register."};
+      "More formal":"Rewrite in formal executive/legal register.",
+    };
     run(lastInput.current+"\n\n[REFINE: "+(map[type]||type)+"]");
   };
 
-  /* ── Responsive layout values (Coiset fluid scaling) ── */
-  const px      = isMobile?16:isTablet?28:48;       // horizontal padding
-  const gap     = isMobile?24:isTablet?36:48;       // section gap
-  const heroSize= isMobile?28:isTablet?34:42;       // headline font
+  const px      = isMobile?16:isTablet?28:48;
+  const gap     = isMobile?24:isTablet?36:48;
+  const heroSize= isMobile?28:isTablet?34:42;
   const techCols= isMobile?"repeat(2,1fr)":isTablet?"repeat(3,1fr)":"repeat(4,1fr)";
   const provDir = isMobile?"column":"row";
   const navH    = isMobile?56:64;
-  const botNavH = isMobile?60:0;                    // Calzada bottom nav height
+  const botNavH = isMobile?60:0;
 
-  /* ── NAV tabs — desktop top, mobile bottom ── */
   const NAV_ITEMS=[
     {v:"build",  icon:"✦", label:"Build"},
     {v:"output", icon:"◎", label:"Output"},
@@ -308,7 +305,7 @@ export default function App(){
             </div>
           </div>
 
-          {/* Desktop tabs (Calzada: hidden on mobile — moved to bottom) */}
+          {/* Desktop tabs */}
           {!isMobile&&(
             <div style={{display:"flex",gap:4,background:dark?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.04)",
               borderRadius:50,padding:4}}>
@@ -326,7 +323,7 @@ export default function App(){
             </div>
           )}
 
-          {/* Status + toggle + API key */}
+          {/* Status + dark toggle */}
           <div style={{display:"flex",alignItems:"center",gap:isMobile?8:16}}>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <div style={{width:7,height:7,borderRadius:"50%",flexShrink:0,
@@ -336,34 +333,6 @@ export default function App(){
                 transition:"background .3s"}}/>
               {!isMobile&&<span style={{fontSize:12,color:txt2}}>{loading?"Processing…":"Ready"}</span>}
             </div>
-            
-            {/* API Key Button */}
-            <button onClick={()=>setShowApiInput(!showApiInput)} style={{
-              background:apiKey?"rgba(37,211,102,0.15)":"rgba(255,255,255,0.1)",
-              border:apiKey?`1px solid ${W.green}`:"none",
-              borderRadius:50,cursor:"pointer",
-              padding:isMobile?"8px":"8px 14px",
-              fontSize:isMobile?11:12,color:apiKey?W.green:txt3,fontFamily:W.font,
-              fontWeight:apiKey?600:400,minHeight:44,minWidth:44,
-              transition:"all .2s",
-            }}>🔑 {apiKey?"✓ Key":"API"}</button>
-
-            {/* API Key Input (hidden/shown) */}
-            {showApiInput&&(
-              <input type="password" placeholder="sk-ant-..." value={apiKey}
-                onChange={e=>setApiKey(e.target.value)}
-                style={{
-                  padding:"8px 12px",height:44,borderRadius:50,
-                  border:`1px solid ${W.green}`,background:dark?"rgba(37,211,102,0.1)":"rgba(37,211,102,0.05)",
-                  color:txt,fontFamily:"monospace",fontSize:12,
-                  outline:"none",minWidth:isMobile?120:200,
-                  transition:"border .2s",
-                }}
-                onBlur={()=>setTimeout(()=>setShowApiInput(false),100)}
-                onFocus={e=>e.target.select()}
-              />
-            )}
-
             <button onClick={()=>setDark(d=>!d)} style={{
               background:dark?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.06)",
               border:"none",borderRadius:50,cursor:"pointer",
@@ -374,7 +343,7 @@ export default function App(){
           </div>
         </nav>
 
-        {/* ═══ BODY (Coiset fluid container) ═══ */}
+        {/* ═══ BODY ═══ */}
         <div style={{maxWidth:1100,margin:"0 auto",padding:`${isMobile?24:48}px ${px}px`,
           boxSizing:"border-box"}}>
 
@@ -382,7 +351,6 @@ export default function App(){
           {view==="build"&&(
             <div className="fade-up" style={{display:"flex",flexDirection:"column",gap}}>
 
-              {/* Hero — Bierut scale, Coiset fluid type */}
               <div>
                 <div style={{fontSize:heroSize,fontWeight:700,lineHeight:1.1,
                   letterSpacing:isMobile?"-0.5px":"-1px",color:txt,marginBottom:8}}>
@@ -394,7 +362,7 @@ export default function App(){
                 </div>
               </div>
 
-              {/* PROVIDER — Phil Pham: vertical on mobile (full-width touch), horizontal desktop */}
+              {/* PROVIDER */}
               <section>
                 <Lbl dark={dark}>AI Provider</Lbl>
                 <div style={{display:"flex",flexDirection:provDir,gap:isMobile?10:16}}>
@@ -437,7 +405,7 @@ export default function App(){
                 </div>
               </section>
 
-              {/* INPUT — Zumbrunnen focus, Phil Pham: larger tap area mobile */}
+              {/* INPUT */}
               <section>
                 <Lbl dark={dark}>Your Goal</Lbl>
                 <div style={{position:"relative"}}>
@@ -478,7 +446,6 @@ export default function App(){
                           boxShadow:`0 2px 6px ${d.color}40`}}>{d.domain}</span>
                       ))}
                     </div>
-                    {/* Phil Pham progressive disclosure: experts collapsed on mobile */}
                     {!isMobile&&(
                       <div style={{marginTop:8,fontSize:12,color:txt2,lineHeight:1.6}}>
                         {detDomains.map(d=>(
@@ -493,7 +460,7 @@ export default function App(){
                 )}
               </section>
 
-              {/* TECHNIQUES — Coiset responsive grid */}
+              {/* TECHNIQUES */}
               <section>
                 <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:12}}>
                   <Lbl dark={dark} noMb>Techniques</Lbl>
@@ -537,7 +504,6 @@ export default function App(){
                         </div>
                         <div style={{fontSize:isMobile?12:13,fontWeight:sel?600:500,
                           color:sel?col:txt,lineHeight:1.3,marginBottom:isMobile?0:4}}>{t.name}</div>
-                        {/* Phil Pham: hide description on mobile to reduce density */}
                         {!isMobile&&(
                           <div style={{fontSize:11,color:txt2,lineHeight:1.45}}>{t.desc}</div>
                         )}
@@ -556,7 +522,7 @@ export default function App(){
                 )}
               </section>
 
-              {/* CONSTRAINTS — wrapping pills */}
+              {/* CONSTRAINTS */}
               <section>
                 <Lbl dark={dark}>Output Constraints</Lbl>
                 <div style={{display:"flex",flexWrap:"wrap",gap:isMobile?8:10}}>
@@ -637,7 +603,7 @@ export default function App(){
               {/* Output bubble */}
               <div style={{position:"relative"}}>
                 <button onClick={()=>{
-                  if(output) {
+                  if(output){
                     navigator.clipboard.writeText(output).then(()=>{
                       setCopied(true);
                       setTimeout(()=>setCopied(false),2000);
@@ -746,7 +712,7 @@ export default function App(){
           )}
         </div>
 
-        {/* ═══ MOBILE BOTTOM NAV (Calzada thumb-zone) ═══ */}
+        {/* ═══ MOBILE BOTTOM NAV ═══ */}
         {isMobile&&(
           <nav className="bottom-nav" style={{
             position:"fixed",bottom:0,left:0,right:0,zIndex:200,
