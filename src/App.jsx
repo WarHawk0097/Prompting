@@ -3,6 +3,8 @@ import { supabase, supabaseEnabled } from "./supabase.js";
 import {
   TC, TECHNIQUES, CONSTRAINTS_GROUPED, REFINES,
   TEMPLATES, detectDomains, extractVariables, fillVariables, buildSystem,
+  IMAGE_TOOLS, IMAGE_RATIOS, IMAGE_STYLES, IMAGE_QUALITY,
+  isImageGenContext, buildJudgeSystem,
 } from "./data.js";
 import "./styles.css";
 
@@ -300,6 +302,22 @@ function Workspace({theme, toggleTheme, user, setAuthOpen, signOut, onBackToLand
 
   const [templateCat,setTemplateCat]=useState("All");
   const [varValues,setVarValues]=useState({});
+
+  // Image gen options
+  const [imgOpts,setImgOpts]=useState({tool:"midjourney",ratio:"1:1",style:"Photorealistic",quality:"High detail",negative:""});
+  const [lastTemplateCat,setLastTemplateCat]=useState("");
+
+  // A/B testing state
+  const [abMode,setAbMode]=useState("techniques"); // "techniques" | "prompts"
+  const [abTechIdsA,setAbTechIdsA]=useState(["cot","few"]);
+  const [abTechIdsB,setAbTechIdsB]=useState(["role","decomp"]);
+  const [abPromptA,setAbPromptA]=useState("");
+  const [abPromptB,setAbPromptB]=useState("");
+  const [abInput,setAbInput]=useState("");
+  const [abLoading,setAbLoading]=useState(false);
+  const [abResultA,setAbResultA]=useState("");
+  const [abResultB,setAbResultB]=useState("");
+  const [abVerdict,setAbVerdict]=useState(null);
   const lastInput=useRef("");
   const {isMobile,isTablet}=useBreakpoint();
 
@@ -328,7 +346,9 @@ function Workspace({theme, toggleTheme, user, setAuthOpen, signOut, onBackToLand
   const detDomains=detectDomains(input);
   const variables=extractVariables(input);
 
-  const applyTemplate=(t)=>{setInput(t.seed);setTechIds(t.techIds||[]);setConstraints(t.constraints||[]);setVarValues({});setView("build");};
+  const applyTemplate=(t)=>{setInput(t.seed);setTechIds(t.techIds||[]);setConstraints(t.constraints||[]);setVarValues({});setLastTemplateCat(t.cat);setView("build");};
+
+  const showImageOpts = isImageGenContext(input, lastTemplateCat);
 
   const saveToLibrary=async(name)=>{
     if(!output.trim())return;
@@ -385,7 +405,7 @@ function Workspace({theme, toggleTheme, user, setAuthOpen, signOut, onBackToLand
       const res=await fetch("/api/chat",{
         method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1500,
-          system:buildSystem(techIds,constraints,raw),messages:[{role:"user",content:raw}]}),
+          system:buildSystem(techIds,constraints,raw, showImageOpts ? imgOpts : null),messages:[{role:"user",content:raw}]}),
       });
       const data=await res.json();
       if(data.error){setOutput("Error: "+(typeof data.error==="string"?data.error:JSON.stringify(data.error)));setLoading(false);return;}
@@ -401,6 +421,91 @@ function Workspace({theme, toggleTheme, user, setAuthOpen, signOut, onBackToLand
     setLoading(false);
   };
 
+  const runABTest = async () => {
+    const raw = abInput.trim();
+    if(!raw) return;
+
+    setAbLoading(true);
+    setAbResultA("");
+    setAbResultB("");
+    setAbVerdict(null);
+
+    try {
+      // Build system prompts for both variants
+      const sysA = abMode === "techniques"
+        ? buildSystem(abTechIdsA, constraints, raw, showImageOpts ? imgOpts : null)
+        : abPromptA;
+      const sysB = abMode === "techniques"
+        ? buildSystem(abTechIdsB, constraints, raw, showImageOpts ? imgOpts : null)
+        : abPromptB;
+
+      // Run both in parallel
+      const [resA, resB] = await Promise.all([
+        fetch("/api/chat",{
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            model:"claude-sonnet-4-20250514", max_tokens:1500,
+            system: sysA, messages:[{role:"user",content:raw}],
+          }),
+        }).then(r=>r.json()),
+        fetch("/api/chat",{
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            model:"claude-sonnet-4-20250514", max_tokens:1500,
+            system: sysB, messages:[{role:"user",content:raw}],
+          }),
+        }).then(r=>r.json()),
+      ]);
+
+      if(resA.error || resB.error){
+        setAbResultA(resA.error ? "Error: "+JSON.stringify(resA.error) : (resA.content?.map(b=>b.text||"").join("")||""));
+        setAbResultB(resB.error ? "Error: "+JSON.stringify(resB.error) : (resB.content?.map(b=>b.text||"").join("")||""));
+        setAbLoading(false);
+        return;
+      }
+
+      const textA = resA.content?.map(b=>b.text||"").join("") || "";
+      const textB = resB.content?.map(b=>b.text||"").join("") || "";
+      setAbResultA(textA);
+      setAbResultB(textB);
+
+      // Now ask Claude to judge
+      const judgeRes = await fetch("/api/chat",{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          model:"claude-sonnet-4-20250514", max_tokens:800,
+          system: buildJudgeSystem(),
+          messages:[{
+            role:"user",
+            content: `USER'S ORIGINAL GOAL:\n${raw}\n\n---\nPROMPT A:\n${textA}\n\n---\nPROMPT B:\n${textB}\n\n---\nGrade both and return strict JSON.`,
+          }],
+        }),
+      }).then(r=>r.json());
+
+      if(judgeRes.error){
+        setAbVerdict({error:"Judge failed: "+JSON.stringify(judgeRes.error)});
+        setAbLoading(false);
+        return;
+      }
+
+      const judgeText = judgeRes.content?.map(b=>b.text||"").join("") || "";
+      // Try to parse JSON from judge response
+      try {
+        const cleaned = judgeText.replace(/```json\s*|\s*```/g,"").trim();
+        const jsonStart = cleaned.indexOf("{");
+        const jsonEnd = cleaned.lastIndexOf("}");
+        if(jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON found");
+        const parsed = JSON.parse(cleaned.slice(jsonStart, jsonEnd+1));
+        setAbVerdict(parsed);
+      } catch(e) {
+        setAbVerdict({error:"Could not parse judge output: "+e.message, raw:judgeText});
+      }
+    } catch(e) {
+      setAbVerdict({error:e.message});
+    }
+    setAbLoading(false);
+  };
+
   const refine=type=>{
     const map={"Shorter":"Rewrite in half the words. Same facts, tighter.","Add constraints":"Add strict compliance rules and edge-case handling.","More persuasive":"Rewrite using compelling, action-driving language.","Add example":"Add a concrete real-world example to illustrate the key point.","More formal":"Rewrite in formal executive/legal register."};
     run(lastInput.current+"\n\n[REFINE: "+(map[type]||type)+"]");
@@ -410,6 +515,7 @@ function Workspace({theme, toggleTheme, user, setAuthOpen, signOut, onBackToLand
     {v:"build",icon:"✦",label:"Build"},
     {v:"templates",icon:"⚡",label:"Templates"},
     {v:"output",icon:"◎",label:"Output"},
+    {v:"abtest",icon:"⇄",label:"A/B Test"},
     {v:"library",icon:"★",label:"Library"},
     {v:"history",icon:"☰",label:"History"},
   ];
@@ -514,6 +620,61 @@ function Workspace({theme, toggleTheme, user, setAuthOpen, signOut, onBackToLand
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* IMAGE GEN OPTIONS */}
+              {showImageOpts && (
+                <div className="slide-down" style={{marginTop:14,padding:"18px 20px",borderRadius:"var(--radius-lg)",background:"color-mix(in srgb, #EC4899 7%, var(--bg-elevated))",border:"1px solid color-mix(in srgb, #EC4899 25%, transparent)"}}>
+                  <div className="row-between" style={{marginBottom:14}}>
+                    <div className="section-label" style={{color:"#EC4899"}}>🎨 Image generation options</div>
+                    <span className="tert" style={{fontSize:11}}>Auto-detected</span>
+                  </div>
+
+                  <div className="col" style={{gap:14}}>
+                    <div>
+                      <div style={{fontSize:11,fontWeight:500,color:"var(--text-tert)",letterSpacing:"0.05em",textTransform:"uppercase",marginBottom:8,fontFamily:"var(--font-mono)"}}>Target tool</div>
+                      <div className="gap-xs">
+                        {IMAGE_TOOLS.map(t=>(
+                          <button key={t.id} className={imgOpts.tool===t.id?"cpill on":"cpill"} onClick={()=>setImgOpts(o=>({...o,tool:t.id}))} title={t.hint}>{t.label}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{fontSize:11,fontWeight:500,color:"var(--text-tert)",letterSpacing:"0.05em",textTransform:"uppercase",marginBottom:8,fontFamily:"var(--font-mono)"}}>Aspect ratio</div>
+                      <div className="gap-xs">
+                        {IMAGE_RATIOS.map(r=>(
+                          <button key={r.id} className={imgOpts.ratio===r.id?"cpill on":"cpill"} onClick={()=>setImgOpts(o=>({...o,ratio:r.id}))}>{r.label}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{fontSize:11,fontWeight:500,color:"var(--text-tert)",letterSpacing:"0.05em",textTransform:"uppercase",marginBottom:8,fontFamily:"var(--font-mono)"}}>Style</div>
+                      <div className="gap-xs">
+                        {IMAGE_STYLES.map(s=>(
+                          <button key={s} className={imgOpts.style===s?"cpill on":"cpill"} onClick={()=>setImgOpts(o=>({...o,style:s}))}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{fontSize:11,fontWeight:500,color:"var(--text-tert)",letterSpacing:"0.05em",textTransform:"uppercase",marginBottom:8,fontFamily:"var(--font-mono)"}}>Quality</div>
+                      <div className="gap-xs">
+                        {IMAGE_QUALITY.map(q=>(
+                          <button key={q} className={imgOpts.quality===q?"cpill on":"cpill"} onClick={()=>setImgOpts(o=>({...o,quality:q}))}>{q}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{fontSize:11,fontWeight:500,color:"var(--text-tert)",letterSpacing:"0.05em",textTransform:"uppercase",marginBottom:8,fontFamily:"var(--font-mono)"}}>Negative prompt (avoid)</div>
+                      <input className="input" value={imgOpts.negative} onChange={e=>setImgOpts(o=>({...o,negative:e.target.value}))}
+                        placeholder="e.g. blurry, distorted faces, watermark, low quality"
+                        style={{fontSize:13}}/>
+                    </div>
+                  </div>
                 </div>
               )}
             </section>
@@ -642,6 +803,160 @@ function Workspace({theme, toggleTheme, user, setAuthOpen, signOut, onBackToLand
             )}
 
             <button onClick={()=>setView("build")} className="btn btn-ghost" style={{alignSelf:"flex-start"}}>← Build new</button>
+          </div>
+        )}
+
+        {view==="abtest" && (
+          <div className="fade-up col" style={{gap:"clamp(20px,3vw,32px)"}}>
+            <div>
+              <h1 className="h2">A/B test prompts</h1>
+              <p className="muted" style={{fontSize:15,marginTop:6,maxWidth:640,lineHeight:1.55}}>
+                Compare two approaches against the same goal. Claude judges both on a 4-point rubric (clarity, specificity, completeness, robustness) and picks a winner.
+              </p>
+            </div>
+
+            {/* Mode picker */}
+            <div>
+              <div className="section-label" style={{marginBottom:10}}>Comparison mode</div>
+              <div className="gap-sm">
+                <button className={abMode==="techniques"?"cpill on":"cpill"} onClick={()=>setAbMode("techniques")}>
+                  Two technique stacks
+                </button>
+                <button className={abMode==="prompts"?"cpill on":"cpill"} onClick={()=>setAbMode("prompts")}>
+                  Two different prompts
+                </button>
+              </div>
+            </div>
+
+            {/* Shared input */}
+            <div>
+              <div className="section-label" style={{marginBottom:10}}>The goal</div>
+              <textarea className="textarea" value={abInput} onChange={e=>setAbInput(e.target.value)}
+                placeholder={abMode==="techniques" ? "What do you want an AI to do? Both variants will rewrite this same goal." : "Optional context for the test (you can leave empty if your two prompts already include everything)."}
+              />
+            </div>
+
+            {/* Variant configs */}
+            {abMode==="techniques" && (
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(2,1fr)",gap:14}}>
+                {[{label:"A",ids:abTechIdsA,set:setAbTechIdsA,color:"#10B981"},{label:"B",ids:abTechIdsB,set:setAbTechIdsB,color:"#3B82F6"}].map(v=>(
+                  <div key={v.label} className="surface" style={{padding:"18px 20px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+                      <span style={{fontFamily:"var(--font-serif)",fontStyle:"italic",fontSize:24,color:v.color,fontWeight:500}}>{v.label}</span>
+                      <span className="section-label">Variant {v.label}</span>
+                    </div>
+                    <div className="section-label" style={{marginBottom:8,fontSize:10}}>Pick techniques</div>
+                    <div className="gap-xs">
+                      {TECHNIQUES.map(t=>{
+                        const sel=v.ids.includes(t.id);
+                        return(
+                          <button key={t.id} onClick={()=>v.set(p=>p.includes(t.id)?p.filter(x=>x!==t.id):[...p,t.id])} style={{
+                            fontFamily:"var(--font-mono)",fontSize:10,fontWeight:500,
+                            padding:"4px 8px",borderRadius:6,cursor:"pointer",
+                            background:sel?TC[t.id]:"var(--bg-muted)",
+                            color:sel?"#fff":"var(--text-sec)",
+                            border:`1px solid ${sel?TC[t.id]:"var(--border)"}`,
+                          }}>{t.short}</button>
+                        );
+                      })}
+                    </div>
+                    <div className="tert" style={{fontSize:11,marginTop:10}}>{v.ids.length} active</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {abMode==="prompts" && (
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(2,1fr)",gap:14}}>
+                {[{label:"A",val:abPromptA,set:setAbPromptA,color:"#10B981"},{label:"B",val:abPromptB,set:setAbPromptB,color:"#3B82F6"}].map(v=>(
+                  <div key={v.label} className="surface" style={{padding:"18px 20px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+                      <span style={{fontFamily:"var(--font-serif)",fontStyle:"italic",fontSize:24,color:v.color,fontWeight:500}}>{v.label}</span>
+                      <span className="section-label">Prompt {v.label}</span>
+                    </div>
+                    <textarea className="textarea" value={v.val} onChange={e=>v.set(e.target.value)}
+                      placeholder={`Paste your ${v.label} variant here...`}
+                      style={{minHeight:140,fontSize:13,lineHeight:1.6}}/>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button className="btn-cta" onClick={runABTest} disabled={abLoading || !abInput.trim() || (abMode==="prompts" && (!abPromptA.trim() || !abPromptB.trim()))}>
+              {abLoading ? (
+                <span style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%",display:"inline-block",animation:"spin .8s linear infinite"}}/>
+                  Running both + judge…
+                </span>
+              ) : "Run A/B test →"}
+            </button>
+
+            <div className="tert" style={{fontSize:12,textAlign:"center"}}>3 API calls per run (A, B, and judge)</div>
+
+            {/* RESULTS */}
+            {(abResultA || abResultB || abLoading) && (
+              <div className="fade-up col" style={{gap:24,marginTop:24}}>
+                <h2 className="h2" style={{fontSize:"clamp(20px,3vw,28px)"}}>Results</h2>
+
+                {abVerdict && !abVerdict.error && (
+                  <div className="surface fade-up" style={{padding:"24px 28px",borderLeft:`4px solid ${abVerdict.winner==="a"?"#10B981":abVerdict.winner==="b"?"#3B82F6":"var(--text-tert)"}`}}>
+                    <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14,flexWrap:"wrap"}}>
+                      <div style={{fontFamily:"var(--font-serif)",fontStyle:"italic",fontSize:32,fontWeight:500,color:abVerdict.winner==="a"?"#10B981":abVerdict.winner==="b"?"#3B82F6":"var(--text-pri)"}}>
+                        {abVerdict.winner==="tie" ? "Tie" : `${abVerdict.winner.toUpperCase()} wins`}
+                      </div>
+                      <div style={{display:"flex",gap:14,fontFamily:"var(--font-mono)",fontSize:13}}>
+                        <span><span style={{color:"#10B981",fontWeight:600}}>A: {abVerdict.a?.total}</span><span className="tert">/40</span></span>
+                        <span><span style={{color:"#3B82F6",fontWeight:600}}>B: {abVerdict.b?.total}</span><span className="tert">/40</span></span>
+                      </div>
+                    </div>
+                    <div style={{fontSize:14,lineHeight:1.6,color:"var(--text-pri)"}}>{abVerdict.why}</div>
+                  </div>
+                )}
+
+                {abVerdict?.error && (
+                  <div className="surface" style={{padding:"18px 22px",borderLeft:"4px solid #EF4444"}}>
+                    <div style={{fontSize:13,fontWeight:600,color:"#EF4444",marginBottom:6}}>Judge error</div>
+                    <div className="muted" style={{fontSize:13}}>{abVerdict.error}</div>
+                    {abVerdict.raw && <pre style={{fontSize:11,marginTop:10,background:"var(--bg-muted)",padding:10,borderRadius:6,overflow:"auto"}}>{abVerdict.raw}</pre>}
+                  </div>
+                )}
+
+                <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(2,1fr)",gap:14}}>
+                  {[
+                    {label:"A",text:abResultA,scores:abVerdict?.a,color:"#10B981",isWinner:abVerdict?.winner==="a"},
+                    {label:"B",text:abResultB,scores:abVerdict?.b,color:"#3B82F6",isWinner:abVerdict?.winner==="b"},
+                  ].map(v=>(
+                    <div key={v.label} className="surface" style={{padding:0,overflow:"hidden",borderColor:v.isWinner?v.color:"var(--border)",borderWidth:v.isWinner?2:1}}>
+                      <div style={{padding:"14px 20px",borderBottom:"1px solid var(--border)",background:`color-mix(in srgb,${v.color} 5%, transparent)`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontFamily:"var(--font-serif)",fontStyle:"italic",fontSize:22,fontWeight:500,color:v.color}}>{v.label}</span>
+                          {v.isWinner && <span style={{fontFamily:"var(--font-mono)",fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:4,background:v.color,color:"#fff"}}>WINNER</span>}
+                        </div>
+                        <button className="btn btn-ghost" onClick={()=>{navigator.clipboard.writeText(v.text);}} disabled={!v.text} style={{fontSize:11,padding:"4px 10px",minHeight:28}}>📋 Copy</button>
+                      </div>
+
+                      {v.scores && (
+                        <div style={{padding:"12px 20px",borderBottom:"1px solid var(--border)",background:"var(--bg-subtle)"}}>
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,fontSize:11,fontFamily:"var(--font-mono)"}}>
+                            {[["clarity","CLR"],["specificity","SPC"],["completeness","CMP"],["robustness","RBS"]].map(([k,abbr])=>(
+                              <div key={k} style={{textAlign:"center"}}>
+                                <div className="tert" style={{fontSize:9,marginBottom:2}}>{abbr}</div>
+                                <div style={{fontWeight:600,color:v.color}}>{v.scores[k]}<span className="tert">/10</span></div>
+                              </div>
+                            ))}
+                          </div>
+                          {v.scores.verdict && <div style={{fontSize:12,fontStyle:"italic",color:"var(--text-sec)",marginTop:10,lineHeight:1.5}}>"{v.scores.verdict}"</div>}
+                        </div>
+                      )}
+
+                      <div style={{padding:"18px 22px",fontSize:14,lineHeight:1.6,whiteSpace:"pre-wrap",minHeight:160}}>
+                        {abLoading && !v.text ? <span className="muted">Generating<TypingDots/></span> : (v.text || <span className="output-empty">No output yet</span>)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
